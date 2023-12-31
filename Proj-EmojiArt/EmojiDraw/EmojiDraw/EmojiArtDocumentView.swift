@@ -8,12 +8,14 @@
 import SwiftUI
 
 struct EmojiArtDocumentView: View {
+    @Environment(\.undoManager) var undoManager
     typealias Emoji = EmojiArt.Emoji
     @ObservedObject var document: EmojiArtDocument
-    
+    @StateObject var paletteStore = PaletteStore(named: "Shared")
+
     
     private let emojis = "🍏🍎🍐🍊🍋🫐🍓🍇🍉🍌🍈🍒🍑🥭🍍🥑🍆🍅🥝🥥🫛🥦🥬🥒🌶️🫒🧄🥕🌽🫑🧅🍠🫚🥐🧀🥨🥖🍞🥯🥚🍳🧈🧈🧇🦴🍖🍗🥩🥓🌭🍔🍟🍕🫓🌯🌮🧆🥙🥪🫔🥗🥘🫕🥫🍝🍜🍲🍛🍤🦪🥟🍱🍣🍙🍚🍘🍥🥠🍨🍧🍡🍢🥮🍦🥧🧁🍰🎂🍿🍫🍬🍭🍮🍪🍩🌰🥜🫘"
-    private let paletteEmojiSize: CGFloat = 40
+    @ScaledMetric var paletteEmojiSize: CGFloat = 40
     var body: some View {
         VStack (spacing: 0) {
             documentBody
@@ -23,7 +25,10 @@ struct EmojiArtDocumentView: View {
                 .padding(.horizontal)
                 .scrollIndicators(.hidden)
         } //: Vstack
-        
+        .toolbar {
+            UndoButton()
+        }
+        .environmentObject(paletteStore)
 
     }
     
@@ -31,18 +36,57 @@ struct EmojiArtDocumentView: View {
         GeometryReader { geometry in
             ZStack {
                 Color.white
+                if document.background.isFetching {
+                    ProgressView()
+                        .scaleEffect(2)
+                        .tint(.blue)
+                        .position(Emoji.Position.zero.in(geometry))
+                }
                 documentContents(in: geometry)
                     .scaleEffect(zoom * gestureZoom)
                     .offset(pan + gesturePan)
             }//: Zstack
             .gesture(panGesture.simultaneously(with: zoomGesture))
+            .onTapGesture(count: 2, perform: {
+                zoomToFit(document.bbox, in: geometry)
+            })
             .dropDestination(for: Sturldata.self) { sturldatas, location in
                 drop(sturldatas, at: location, in: geometry)
-
             }
+            .onChange(of: document.background.failureReason) { _, reason in
+                showBackgroundFailureAlert = (reason != nil)
+            }
+            .onChange(of: document.background.uiImage, { oldValue, newValue in
+                zoomToFit(newValue?.size, in: geometry)
+            })
+            .alert(
+                "Set Background",
+                isPresented: $showBackgroundFailureAlert,
+                presenting: document.background.failureReason) { reason in
+                    Button("OK", role: .cancel) {}
+                } message: { reason in
+                    Text(reason)
+                }
+
         }
     }
 
+    @ViewBuilder
+    private func documentContents(in geometry: GeometryProxy) -> some View {
+        // image
+        if let uiImage = document.background.uiImage {
+            Image(uiImage: uiImage)
+                .position(Emoji.Position.zero.in(geometry))
+        }
+
+        ForEach(document.emojis) { emoji in
+            Text(emoji.string)
+                .font(emoji.font)
+                .position(emoji.position.in(geometry))
+        }
+    }
+    
+    @State private var showBackgroundFailureAlert = false
     @State private var zoom: CGFloat = 1
     @State private var pan: CGOffset = .zero
     
@@ -69,41 +113,18 @@ struct EmojiArtDocumentView: View {
             }
     }
     
-    
-    @ViewBuilder
-    private func documentContents(in geometry: GeometryProxy) -> some View {
-        // image
-        AsyncImage(url: document.backgrounds) { phase in
-            if let image = phase.image {
-                image
-            } else if let url = document.backgrounds {
-                if phase.error != nil {
-                    Text("\(url)")
-                } else {
-                    ProgressView()
-                }
-            }
-        }
-            .position(Emoji.Position.zero.in(geometry))
-
-        ForEach(document.emojis) { emoji in
-            Text(emoji.string)
-                .font(emoji.font)
-                .position(emoji.position.in(geometry))
-        }
-    }
-    
     private func drop(_ sturldatas: [Sturldata], at location: CGPoint, in geometry: GeometryProxy) -> Bool {
         for sturldata in sturldatas {
             switch sturldata {
             case .url(let url):
-                document.setBackground(url)
+                document.setBackground(url, undoManager: undoManager)
                 return true
             case .string(let emoji):
                 document.addEmoji(
                     emoji,
                     at: emojiPosition(at: location, in: geometry),
-                    size: paletteEmojiSize / zoom
+                    size: paletteEmojiSize / zoom,
+                    undoManager: undoManager
                 )
                 return true
 
@@ -123,6 +144,29 @@ struct EmojiArtDocumentView: View {
             y: Int(-(location.y - center.y - pan.height) / zoom)
         )
     }
+    
+    private func zoomToFit(_ size: CGSize?, in geometry: GeometryProxy) {
+        if let size {
+            zoomToFit(CGRect(center: .zero, size: size), in: geometry)
+        }
+    }
+    
+    private func zoomToFit(_ rect: CGRect, in geometry: GeometryProxy) {
+        withAnimation {
+            if rect.size.width > 0, rect.size.height > 0,
+               geometry.size.width > 0, geometry.size.height > 0 {
+                let hZoom = geometry.size.width / rect.size.width
+                let VZoom = geometry.size.height / rect.size.height
+                
+                zoom = min(hZoom, VZoom)
+                pan = CGOffset(
+                    width: -rect.midX * zoom,
+                    height: -rect.midY * zoom
+                )
+            }
+        }
+    }
+
 }
 
 

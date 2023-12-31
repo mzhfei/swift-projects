@@ -30,11 +30,11 @@ struct PaletteEditor: View {
                 TextField("Add emojis here", text: $emojisToAdd)
                     .focused($focused, equals: .addEmojis)
                     .font(emojiFont)
-                    .onChange(of: emojisToAdd) { emojisToAdd in
-                        palette.emojis = (emojisToAdd + palette.emojis)
-//                            .filter { $0.isEmoji }
-                            .uniqued
-                    }
+                    .onChange(of: emojisToAdd, { _, emojisToAdd in
+                           palette.emojis = (emojisToAdd + palette.emojis)
+                               .filter { $0.isEmoji }
+                               .uniqued
+                    })
                 removeEmojis
             }
         }
@@ -59,8 +59,8 @@ struct PaletteEditor: View {
                     Text(emoji)
                         .onTapGesture {
                             withAnimation {
-//                                palette.emojis.remove(emoji.first!)
-//                                emojisToAdd.remove(emoji.first!)
+                                palette.emojis.remove(emoji.first!)
+                                emojisToAdd.remove(emoji.first!)
                             }
                         }
                 }

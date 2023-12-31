@@ -93,8 +93,80 @@ struct AnimatedActionButton: View {
             } else if let systemImage {
                 Image(systemName: systemImage)
             }
-            
         }
     }
+}
+
+extension Character {
+    var isEmoji: Bool {
+        if let firstScalar = unicodeScalars.first, firstScalar.properties.isEmoji {
+            return (firstScalar.value >= 0x238d || unicodeScalars.count > 1)
+        } else {
+            return false
+        }
+    }
+}
+
+extension String {
+    mutating func remove(_ ch: Character) {
+        removeAll(where: {$0 == ch})
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func withAutomaticToolbarRole() -> some View {
+        if #available(iOS 16.0, *) {
+            self.toolbarRole(.automatic)
+        } else {
+            self
+        }
+    }
+}
+
+
+struct UndoButton: View {
+    @Environment(\.undoManager) var undoManager
+    
+    @State private var showUndoMenu = false
+    
+    var body: some View {
+        if let undoManager {
+            Image(systemName: "arrow.uturn.backward.circle")
+                .foregroundColor(.accentColor)
+                .onTapGesture {
+                    undoManager.undo()
+                }
+                .onLongPressGesture {
+                    showUndoMenu = true
+                }
+                .popover(isPresented: $showUndoMenu) {
+                    VStack {
+                        if !undoManager.canUndo, !undoManager.canRedo {
+                            Text("Nothing to undo")
+                        } else {
+                            if undoManager.canUndo {
+                                Button("Undo " + undoManager.undoActionName) {
+                                    undoManager.undo()
+                                }
+                            }
+                            
+                            if undoManager.canRedo {
+                                if undoManager.canUndo {
+                                    Divider()
+                                }
+                                Button("Redo " + undoManager.redoActionName) {
+                                    undoManager.redo()
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+
+                }
+        }
+    }
+    
+    
     
 }

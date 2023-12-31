@@ -61,7 +61,24 @@ class PaletteStore: ObservableObject, Identifiable {
                 palettes = [Palette(name: "Warning", emojis: "‼️")]
             }
         }
+        
+        observer = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main) { [weak self] notification in // weak self ---> don't keep in heap
+                self?.objectWillChange.send()
+        }
     }
+    
+    @State private var observer: NSObjectProtocol?
+    
+    deinit {
+        print("Cleaning observers")
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
     
     @Published var _cursorIndex = 0
 
